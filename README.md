@@ -90,7 +90,7 @@ Discovery【探索】微服务框架，基于Spring Cloud & Spring Cloud Alibaba
 - 支持阿里巴巴Spring Cloud Alibaba中间件生态圈
 - 支持阿里巴巴Nacos、Eureka、Consul和Zookeeper四个服务注册发现中心
 - 支持阿里巴巴Nacos、携程Apollo、Redis和Zookeeper四个远程配置中心
-- 支持阿里巴巴Sentinel和Hystrix两个熔断限流降级权限中间件
+- 支持阿里巴巴Sentinel、Hystrix和Resilience4J三个熔断限流降级权限中间件
 - 支持OpenTracing和OpenTelemetry规范下的调用链中间件，Jaeger、SkyWalking和Zipkin等
 - 支持Prometheus Micrometer和Spring Boot Admin两个指标中间件
 - 支持Java Agent解决异步跨线程ThreadLocal上下文传递
@@ -2459,12 +2459,13 @@ ThreadLocal的作用是提供线程内的局部变量，在多线程环境下访
 例如
 
 ```
--javaagent:C:/opt/discovery-agent/discovery-agent-starter-${discovery.agent.version}.jar -Dthread.scan.packages=org.springframework.aop.interceptor;com.netflix.hystrix;com.nepxion.discovery.guide.service.feign
+-javaagent:C:/opt/discovery-agent/discovery-agent-starter-${discovery.agent.version}.jar -Dthread.scan.packages=reactor.core.scheduler;org.springframework.aop.interceptor;com.netflix.hystrix;com.nepxion.discovery.guide.service.feign
 ```
 
 参数说明
 - /discovery-agent：Agent所在的目录，需要对应到实际的目录上
 - `-D`thread.scan.packages：Runnable，Callable对象所在的扫描目录，该目录下的Runnable，Callable对象都会被装饰。该目录最好精细和准确，这样可以减少被装饰的对象数，提高性能，目录如果有多个，用“;”分隔。该参数只作用于服务侧，网关侧不需要加。参数定义为
+    - WebFlux Reactor异步场景下的扫描目录对应为reactor.core.scheduler，可以解决基于Reactor的Spring Cloud LoadBalancer异步负载均衡下的上下文传递
     - `@`Async场景下的扫描目录对应为org.springframework.aop.interceptor
     - Hystrix线程池隔离场景下的扫描目录对应为com.netflix.hystrix
     - 线程，线程池的扫描目录对应为自定义Runnable，Callable对象所在类的目录
@@ -4203,7 +4204,7 @@ spring.boot.admin.client.url=http://localhost:5555
 ④ 异步跨线程Agent配置
 
 ```
--javaagent:C:/opt/discovery-agent/discovery-agent-starter-${discovery.agent.version}.jar -Dthread.scan.packages=org.springframework.aop.interceptor;com.netflix.hystrix;com.nepxion.discovery.guide.service.feign
+-javaagent:C:/opt/discovery-agent/discovery-agent-starter-${discovery.agent.version}.jar -Dthread.scan.packages=reactor.core.scheduler;org.springframework.aop.interceptor;com.netflix.hystrix;com.nepxion.discovery.guide.service.feign
 ```
 
 ### 功能开关配置
