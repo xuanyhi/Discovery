@@ -20,18 +20,21 @@ import java.util.Map;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.cloud.client.discovery.composite.CompositeDiscoveryClient;
+import org.springframework.expression.TypeComparator;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
@@ -41,7 +44,10 @@ import com.nepxion.discovery.common.entity.InstanceEntity;
 import com.nepxion.discovery.common.entity.InstanceEntityWrapper;
 import com.nepxion.discovery.common.entity.ServiceType;
 import com.nepxion.discovery.common.entity.UserEntity;
-import com.nepxion.discovery.common.handler.RestErrorHandler;
+import com.nepxion.discovery.common.expression.DiscoveryExpressionResolver;
+import com.nepxion.discovery.common.expression.DiscoveryTypeComparor;
+import com.nepxion.discovery.common.handler.DiscoveryResponseErrorHandler;
+import com.nepxion.discovery.common.util.StringUtil;
 import com.nepxion.discovery.console.adapter.ConfigAdapter;
 import com.nepxion.discovery.console.authentication.AuthenticationResource;
 import com.nepxion.discovery.console.rest.ConfigClearRestInvoker;
@@ -59,6 +65,8 @@ public class ConsoleEndpoint {
 
     private static final String[] DISCOVERY_TYPES = { "Eureka", "Consul", "Zookeeper", "Nacos" };
 
+    private TypeComparator typeComparator = new DiscoveryTypeComparor();
+
     @Autowired
     private DiscoveryClient discoveryClient;
 
@@ -72,7 +80,7 @@ public class ConsoleEndpoint {
 
     public ConsoleEndpoint() {
         consoleRestTemplate = new RestTemplate();
-        consoleRestTemplate.setErrorHandler(new RestErrorHandler());
+        consoleRestTemplate.setErrorHandler(new DiscoveryResponseErrorHandler());
     }
 
     @RequestMapping(path = "/authenticate", method = RequestMethod.POST)
@@ -229,13 +237,29 @@ public class ConsoleEndpoint {
         return executeSentinelClear(serviceId, ruleType);
     }
 
+    @RequestMapping(path = "/validate-expression", method = RequestMethod.GET)
+    @ApiOperation(value = "校验策略的条件表达式", notes = "", response = Boolean.class, httpMethod = "GET")
+    @ResponseBody
+    public ResponseEntity<?> validateExpression(@RequestParam @ApiParam(value = "条件表达式，格式示例：#H['a'] == '1' && #H['b'] != '2'。注意，引号是否为中文格式", required = true) String condition, @RequestParam(required = false, defaultValue = "") @ApiParam(value = "校验参数，格式示例：a=1;b=1。如果多个用“;”分隔，不允许出现空格。允许为空", required = false, defaultValue = "") String validation) {
+        Map<String, String> map = null;
+        try {
+            map = StringUtil.splitToMap(validation);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Invalid format for validation input");
+        }
+
+        boolean validated = DiscoveryExpressionResolver.eval(condition, DiscoveryConstant.EXPRESSION_PREFIX, map, typeComparator);
+
+        return ResponseEntity.ok().body(validated);
+    }
+
     private ResponseEntity<?> executeAuthenticate(UserEntity userEntity) {
         try {
             boolean result = authenticationResource.authenticate(userEntity);
 
             return ResponseEntity.ok().body(result);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ExceptionUtils.getStackTrace(e));
         }
     }
 
@@ -390,7 +414,7 @@ public class ConsoleEndpoint {
 
             return ResponseEntity.ok().body(result ? DiscoveryConstant.OK : DiscoveryConstant.NO);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ExceptionUtils.getStackTrace(e));
         }
     }
 
@@ -406,7 +430,7 @@ public class ConsoleEndpoint {
 
             return ResponseEntity.ok().body(result ? DiscoveryConstant.OK : DiscoveryConstant.NO);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ExceptionUtils.getStackTrace(e));
         }
     }
 
@@ -422,7 +446,7 @@ public class ConsoleEndpoint {
 
             return ResponseEntity.ok().body(config);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ExceptionUtils.getStackTrace(e));
         }
     }
 

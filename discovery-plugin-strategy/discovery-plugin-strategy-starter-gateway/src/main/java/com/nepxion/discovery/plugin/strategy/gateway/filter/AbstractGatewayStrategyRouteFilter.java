@@ -54,7 +54,7 @@ public abstract class AbstractGatewayStrategyRouteFilter implements GatewayStrat
     // 5. n-d-region-weight
     // 6. n-d-id-blacklist
     // 7. n-d-address-blacklist
-    // 8. n-d-env (不属于灰度蓝绿范畴的Header，只要外部传入就会全程传递)
+    // 8. n-d-env (不属于蓝绿灰度范畴的Header，只要外部传入就会全程传递)
     @Value("${" + GatewayStrategyConstant.SPRING_APPLICATION_STRATEGY_GATEWAY_CORE_HEADER_TRANSMISSION_ENABLED + ":true}")
     protected Boolean gatewayCoreHeaderTransmissionEnabled;
 
@@ -72,7 +72,14 @@ public abstract class AbstractGatewayStrategyRouteFilter implements GatewayStrat
         GatewayStrategyContext.getCurrentContext().setExchange(exchange);
 
         // 通过过滤器设置路由Header头部信息，并全链路传递到服务端
-        ServerHttpRequest.Builder requestBuilder = exchange.getRequest().mutate();
+        ServerHttpRequest request = exchange.getRequest();
+        ServerHttpRequest.Builder requestBuilder = request.mutate();
+
+        String routeEnvironment = getRouteEnvironment();
+        // 通过过滤器设置路由Header头部信息，并全链路传递到服务端
+        if (StringUtils.isNotEmpty(routeEnvironment)) {
+            GatewayStrategyFilterResolver.setHeader(requestBuilder, DiscoveryConstant.N_D_ENVIRONMENT, routeEnvironment, false);
+        }
 
         if (gatewayCoreHeaderTransmissionEnabled) {
             // 内置Header预先塞入
@@ -93,7 +100,6 @@ public abstract class AbstractGatewayStrategyRouteFilter implements GatewayStrat
             String routeRegionWeight = getRouteRegionWeight();
             String routeIdBlacklist = getRouteIdBlacklist();
             String routeAddressBlacklist = getRouteAddressBlacklist();
-
             if (StringUtils.isNotEmpty(routeVersion)) {
                 GatewayStrategyFilterResolver.setHeader(requestBuilder, DiscoveryConstant.N_D_VERSION, routeVersion, gatewayHeaderPriority);
             } else {
@@ -140,8 +146,8 @@ public abstract class AbstractGatewayStrategyRouteFilter implements GatewayStrat
         }
 
         // 对于服务A -> 网关 -> 服务B调用链
-        // 域网关下(zuulHeaderPriority=true)，只传递网关自身的group，不传递服务A的group，起到基于组的网关端服务调用隔离
-        // 非域网关下(zuulHeaderPriority=false)，优先传递服务A的group，基于组的网关端服务调用隔离不生效，但可以实现基于相关参数的熔断限流等功能        
+        // 域网关下(gatewayHeaderPriority=true)，只传递网关自身的group，不传递服务A的group，起到基于组的网关端服务调用隔离
+        // 非域网关下(gatewayHeaderPriority=false)，优先传递服务A的group，基于组的网关端服务调用隔离不生效，但可以实现基于相关参数的熔断限流等功能        
         GatewayStrategyFilterResolver.setHeader(requestBuilder, DiscoveryConstant.N_D_SERVICE_GROUP, pluginAdapter.getGroup(), gatewayHeaderPriority);
         // 网关只负责传递服务A的相关参数（例如：serviceId），不传递自身的参数，实现基于相关参数的熔断限流等功能
         GatewayStrategyFilterResolver.setHeader(requestBuilder, DiscoveryConstant.N_D_SERVICE_TYPE, pluginAdapter.getServiceType(), false);
@@ -156,32 +162,24 @@ public abstract class AbstractGatewayStrategyRouteFilter implements GatewayStrat
         GatewayStrategyFilterResolver.setHeader(requestBuilder, DiscoveryConstant.N_D_SERVICE_ENVIRONMENT, pluginAdapter.getEnvironment(), false);
         GatewayStrategyFilterResolver.setHeader(requestBuilder, DiscoveryConstant.N_D_SERVICE_ZONE, pluginAdapter.getZone(), false);
 
+        // 拦截侦测请求
+        String path = request.getPath().toString();
+        if (path.contains(DiscoveryConstant.INSPECTOR_ENDPOINT_URL)) {
+            GatewayStrategyFilterResolver.setHeader(requestBuilder, DiscoveryConstant.INSPECTOR_ENDPOINT_HEADER, pluginAdapter.getPluginInfo(null), true);
+        }
+
         ServerHttpRequest newRequest = requestBuilder.build();
         ServerWebExchange newExchange = exchange.mutate().request(newRequest).build();
-
-        ServerWebExchange extensionExchange = extendFilter(newExchange, chain);
-
-        ServerWebExchange finalExchange = extensionExchange != null ? extensionExchange : newExchange;
 
         // 把新的ServerWebExchange放入ThreadLocal中
         GatewayStrategyContext.getCurrentContext().setExchange(newExchange);
 
         // 调用链监控
         if (gatewayStrategyMonitor != null) {
-            gatewayStrategyMonitor.monitor(finalExchange);
+            gatewayStrategyMonitor.monitor(newExchange);
         }
 
-        // 拦截侦测请求
-        String path = finalExchange.getRequest().getPath().toString();
-        if (path.contains(DiscoveryConstant.INSPECTOR_ENDPOINT_URL)) {
-            GatewayStrategyFilterResolver.setHeader(requestBuilder, DiscoveryConstant.INSPECTOR_ENDPOINT_HEADER, pluginAdapter.getPluginInfo(null), true);
-        }
-
-        return chain.filter(finalExchange);
-    }
-
-    protected ServerWebExchange extendFilter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        return null;
+        return chain.filter(newExchange);
     }
 
     public PluginAdapter getPluginAdapter() {

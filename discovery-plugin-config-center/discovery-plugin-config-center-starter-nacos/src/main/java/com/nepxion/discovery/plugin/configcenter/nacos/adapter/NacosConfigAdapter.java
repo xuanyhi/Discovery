@@ -16,114 +16,62 @@ import java.util.concurrent.TimeUnit;
 
 import javax.annotation.PostConstruct;
 
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.alibaba.nacos.api.config.listener.Listener;
-import com.nepxion.discovery.common.constant.DiscoveryConstant;
-import com.nepxion.discovery.common.entity.RuleEntity;
-import com.nepxion.discovery.common.entity.RuleType;
 import com.nepxion.discovery.common.nacos.constant.NacosConstant;
 import com.nepxion.discovery.common.nacos.operation.NacosOperation;
 import com.nepxion.discovery.common.nacos.operation.NacosSubscribeCallback;
-import com.nepxion.discovery.common.thread.NamedThreadFactory;
+import com.nepxion.discovery.common.thread.DiscoveryNamedThreadFactory;
 import com.nepxion.discovery.plugin.configcenter.adapter.ConfigAdapter;
-import com.nepxion.discovery.plugin.framework.adapter.PluginAdapter;
-import com.nepxion.discovery.plugin.framework.event.RuleClearedEvent;
-import com.nepxion.discovery.plugin.framework.event.RuleUpdatedEvent;
+import com.nepxion.discovery.plugin.configcenter.logger.ConfigLogger;
 
 public class NacosConfigAdapter extends ConfigAdapter {
-    private static final Logger LOG = LoggerFactory.getLogger(NacosConfigAdapter.class);
-
-    private ExecutorService executorService = new ThreadPoolExecutor(2, 4, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(1), new NamedThreadFactory("nacos-config"), new ThreadPoolExecutor.DiscardOldestPolicy());
-
-    @Autowired
-    private PluginAdapter pluginAdapter;
+    private ExecutorService executorService = new ThreadPoolExecutor(2, 4, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<Runnable>(1), new DiscoveryNamedThreadFactory("nacos-config"), new ThreadPoolExecutor.DiscardOldestPolicy());
 
     @Autowired
     private NacosOperation nacosOperation;
+
+    @Autowired
+    private ConfigLogger configLogger;
 
     private Listener partialListener;
     private Listener globalListener;
 
     @Override
-    public String[] getConfigList() throws Exception {
-        String[] configList = new String[2];
-        configList[0] = getConfig(false);
-        configList[1] = getConfig(true);
-
-        if (StringUtils.isNotEmpty(configList[0])) {
-            LOG.info("Found {} config from {} server", getConfigScope(false), getConfigType());
-        } else {
-            LOG.info("No {} config is found from {} server", getConfigScope(false), getConfigType());
-        }
-
-        if (StringUtils.isNotEmpty(configList[1])) {
-            LOG.info("Found {} config from {} server", getConfigScope(true), getConfigType());
-        } else {
-            LOG.info("No {} config is found from {} server", getConfigScope(true), getConfigType());
-        }
-
-        return configList;
-    }
-
-    private String getConfig(boolean globalConfig) throws Exception {
-        String group = pluginAdapter.getGroup();
-        String serviceId = pluginAdapter.getServiceId();
-        String dataId = globalConfig ? group : serviceId;
-
+    public String getConfig(String group, String dataId) throws Exception {
         return nacosOperation.getConfig(group, dataId);
     }
 
     @PostConstruct
+    @Override
     public void subscribeConfig() {
         partialListener = subscribeConfig(false);
         globalListener = subscribeConfig(true);
     }
 
     private Listener subscribeConfig(boolean globalConfig) {
-        String group = pluginAdapter.getGroup();
-        String serviceId = pluginAdapter.getServiceId();
-        String dataId = globalConfig ? group : serviceId;
-        RuleType ruleType = globalConfig ? RuleType.DYNAMIC_GLOBAL_RULE : RuleType.DYNAMIC_PARTIAL_RULE;
+        String group = getGroup();
+        String dataId = getDataId(globalConfig);
 
-        LOG.info("Subscribe {} config from {} server, group={}, dataId={}", getConfigScope(globalConfig), getConfigType(), group, dataId);
+        configLogger.logSubscribeStarted(globalConfig);
 
         try {
             return nacosOperation.subscribeConfig(group, dataId, executorService, new NacosSubscribeCallback() {
                 @Override
                 public void callback(String config) {
-                    if (StringUtils.isNotEmpty(config)) {
-                        LOG.info("Get {} config updated event from {} server, group={}, dataId={}", getConfigScope(globalConfig), getConfigType(), group, dataId);
-
-                        RuleEntity ruleEntity = pluginAdapter.getRule();
-                        String rule = null;
-                        if (ruleEntity != null) {
-                            rule = ruleEntity.getContent();
-                        }
-                        if (!StringUtils.equals(rule, config)) {
-                            fireRuleUpdated(new RuleUpdatedEvent(ruleType, config), true);
-                        } else {
-                            LOG.info("Updated {} config from {} server is same as current config, ignore to update, group={}, dataId={}", getConfigScope(globalConfig), getConfigType(), group, dataId);
-                        }
-                    } else {
-                        LOG.info("Get {} config cleared event from {} server, group={}, dataId={}", getConfigScope(globalConfig), getConfigType(), group, dataId);
-
-                        fireRuleCleared(new RuleClearedEvent(ruleType), true);
-                    }
+                    callbackConfig(config, globalConfig);
                 }
             });
         } catch (Exception e) {
-            LOG.error("Subscribe {} config from {} server failed, group={}, dataId={}", getConfigScope(globalConfig), getConfigType(), group, dataId, e);
+            configLogger.logSubscribeFailed(e, globalConfig);
         }
 
         return null;
     }
 
     @Override
-    public void close() {
+    public void unsubscribeConfig() {
         unsubscribeConfig(partialListener, false);
         unsubscribeConfig(globalListener, true);
 
@@ -135,21 +83,25 @@ public class NacosConfigAdapter extends ConfigAdapter {
             return;
         }
 
-        String group = pluginAdapter.getGroup();
-        String serviceId = pluginAdapter.getServiceId();
-        String dataId = globalConfig ? group : serviceId;
+        String group = getGroup();
+        String dataId = getDataId(globalConfig);
 
-        LOG.info("Unsubscribe {} config from {} server, group={}, dataId={}", getConfigScope(globalConfig), getConfigType(), group, dataId);
+        configLogger.logUnsubscribeStarted(globalConfig);
 
-        nacosOperation.unsubscribeConfig(group, dataId, configListener);
-    }
-
-    public String getConfigScope(boolean globalConfig) {
-        return globalConfig ? DiscoveryConstant.GLOBAL : DiscoveryConstant.PARTIAL;
+        try {
+            nacosOperation.unsubscribeConfig(group, dataId, configListener);
+        } catch (Exception e) {
+            configLogger.logUnsubscribeFailed(e, globalConfig);
+        }
     }
 
     @Override
     public String getConfigType() {
         return NacosConstant.NACOS_TYPE;
+    }
+
+    @Override
+    public boolean isConfigSingleKey() {
+        return false;
     }
 }

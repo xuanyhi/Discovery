@@ -12,24 +12,18 @@ package com.nepxion.discovery.common.entity;
 import com.nepxion.discovery.common.constant.DiscoveryConstant;
 
 public enum WeightType {
-    VERSION(DiscoveryConstant.VERSION, DiscoveryConstant.VERSION),
-    REGION(DiscoveryConstant.REGION, DiscoveryConstant.REGION),
-    ADDRESS(DiscoveryConstant.ADDRESS, DiscoveryConstant.ADDRESS);
+    VERSION(DiscoveryConstant.VERSION),
+    REGION(DiscoveryConstant.REGION),
+    ADDRESS(DiscoveryConstant.ADDRESS);
 
     private String value;
-    private String description;
 
-    private WeightType(String value, String description) {
+    private WeightType(String value) {
         this.value = value;
-        this.description = description;
     }
 
     public String getValue() {
         return value;
-    }
-
-    public String getDescription() {
-        return description;
     }
 
     public static WeightType fromString(String value) {

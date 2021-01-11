@@ -5,13 +5,13 @@
     <name>Nepxion Discovery Console</name>
     <packaging>pom</packaging>
     <modelVersion>4.0.0</modelVersion>
-    <description>Nepxion Discovery is an enhancement for Spring Cloud Discovery</description>
+    <description>Nepxion Discovery is a solution for Spring Cloud with blue green, gray, weight, limitation, circuit breaker, degrade, isolation, monitor, tracing, dye, failover, async agent</description>
     <url>http://www.nepxion.com</url>
 
     <parent>
         <groupId>com.nepxion</groupId>
         <artifactId>discovery</artifactId>
-        <version>6.3.1</version>
+        <version>7.0.0-SNAPSHOT</version>
     </parent>
 
     <modules>
@@ -19,6 +19,6 @@
         <module>discovery-console-starter-apollo</module>
         <module>discovery-console-starter-nacos</module>
         <module>discovery-console-starter-redis</module>
-        <module>discovery-console-desktop</module>
+        <module>discovery-console-starter-zookeeper</module>
     </modules>
 </project>

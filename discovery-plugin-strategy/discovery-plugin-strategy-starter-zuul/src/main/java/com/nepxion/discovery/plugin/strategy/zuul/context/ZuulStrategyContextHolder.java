@@ -12,6 +12,7 @@ package com.nepxion.discovery.plugin.strategy.zuul.context;
 
 import java.util.Map;
 
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 
 import org.apache.commons.lang3.StringUtils;
@@ -39,7 +40,7 @@ public class ZuulStrategyContextHolder extends AbstractStrategyContextHolder {
     // 5. n-d-region-weight
     // 6. n-d-id-blacklist
     // 7. n-d-address-blacklist
-    // 8. n-d-env (不属于灰度蓝绿范畴的Header，只要外部传入就会全程传递)
+    // 8. n-d-env (不属于蓝绿灰度范畴的Header，只要外部传入就会全程传递)
     @Value("${" + ZuulStrategyConstant.SPRING_APPLICATION_STRATEGY_ZUUL_CORE_HEADER_TRANSMISSION_ENABLED + ":true}")
     protected Boolean zuulCoreHeaderTransmissionEnabled;
 
@@ -47,6 +48,12 @@ public class ZuulStrategyContextHolder extends AbstractStrategyContextHolder {
         HttpServletRequest request = ZuulStrategyContext.getCurrentContext().getRequest();
         if (request == null) {
             request = RequestContext.getCurrentContext().getRequest();
+        }
+
+        if (request == null) {
+            // LOG.warn("The HttpServletRequest object is lost for thread switched, or it is got before context filter probably");
+
+            return null;
         }
 
         return request;
@@ -58,6 +65,12 @@ public class ZuulStrategyContextHolder extends AbstractStrategyContextHolder {
             headers = RequestContext.getCurrentContext().getZuulRequestHeaders();
         }
 
+        if (headers == null) {
+            // LOG.warn("The Headers object is lost for thread switched, or it is got before context filter probably");
+
+            return null;
+        }
+
         return headers;
     }
 
@@ -65,8 +78,6 @@ public class ZuulStrategyContextHolder extends AbstractStrategyContextHolder {
     public String getHeader(String name) {
         HttpServletRequest request = getRequest();
         if (request == null) {
-            // LOG.warn("The HttpServletRequest object is lost for thread switched, or it is got before context filter probably");
-
             return null;
         }
 
@@ -100,5 +111,65 @@ public class ZuulStrategyContextHolder extends AbstractStrategyContextHolder {
 
             return header;
         }
+    }
+
+    @Override
+    public String getParameter(String name) {
+        HttpServletRequest request = getRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getParameter(name);
+    }
+
+    public Cookie getHttpCookie(String name) {
+        HttpServletRequest request = getRequest();
+        if (request == null) {
+            return null;
+        }
+
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+
+        for (int i = 0; i < cookies.length; i++) {
+            Cookie cookie = cookies[i];
+            String cookieName = cookie.getName();
+            if (StringUtils.equals(cookieName, name)) {
+                return cookie;
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public String getCookie(String name) {
+        Cookie cookie = getHttpCookie(name);
+        if (cookie != null) {
+            return cookie.getValue();
+        }
+
+        return null;
+    }
+
+    public String getRequestURL() {
+        HttpServletRequest request = getRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getRequestURL().toString();
+    }
+
+    public String getRequestURI() {
+        HttpServletRequest request = getRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getRequestURI();
     }
 }

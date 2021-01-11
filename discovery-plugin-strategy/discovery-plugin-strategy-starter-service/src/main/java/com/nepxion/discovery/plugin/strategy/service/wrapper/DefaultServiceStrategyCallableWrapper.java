@@ -24,7 +24,7 @@ import com.nepxion.discovery.plugin.strategy.service.context.RpcStrategyContext;
 import com.nepxion.discovery.plugin.strategy.service.decorator.ServiceStrategyRequestDecoratorFactory;
 
 public class DefaultServiceStrategyCallableWrapper implements ServiceStrategyCallableWrapper {
-    @Value("${" + ServiceStrategyConstant.SPRING_APPLICATION_STRATEGY_REST_REQUEST_DECORATOR_ENABLED + ":false}")
+    @Value("${" + ServiceStrategyConstant.SPRING_APPLICATION_STRATEGY_REST_REQUEST_DECORATOR_ENABLED + ":true}")
     protected Boolean requestDecoratorEnabled;
 
     @Override
@@ -44,6 +44,7 @@ public class DefaultServiceStrategyCallableWrapper implements ServiceStrategyCal
             @Override
             public T call() throws Exception {
                 try {
+                    RequestContextHolder.setRequestAttributes(requestAttributes);
                     RestStrategyContext.getCurrentContext().setRequestAttributes(requestAttributes);
                     RpcStrategyContext.getCurrentContext().setAttributes(attributes);
 
@@ -51,6 +52,7 @@ public class DefaultServiceStrategyCallableWrapper implements ServiceStrategyCal
 
                     return callable.call();
                 } finally {
+                    RequestContextHolder.resetRequestAttributes();
                     RestStrategyContext.clearCurrentContext();
                     RpcStrategyContext.clearCurrentContext();
 

@@ -10,11 +10,10 @@ package com.nepxion.discovery.plugin.configcenter.redis.configuration;
  * @version 1.0
  */
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
@@ -26,14 +25,13 @@ import com.nepxion.banner.LogoBanner;
 import com.nepxion.banner.NepxionBanner;
 import com.nepxion.discovery.common.redis.constant.RedisConstant;
 import com.nepxion.discovery.plugin.configcenter.adapter.ConfigAdapter;
+import com.nepxion.discovery.plugin.configcenter.logger.ConfigLogger;
 import com.nepxion.discovery.plugin.configcenter.redis.adapter.RedisConfigAdapter;
 import com.nepxion.discovery.plugin.framework.adapter.PluginAdapter;
 import com.taobao.text.Color;
 
 @Configuration
 public class RedisConfigAutoConfiguration {
-    private static final Logger LOG = LoggerFactory.getLogger(RedisConfigAutoConfiguration.class);
-
     static {
         /*String bannerShown = System.getProperty(BannerConstant.BANNER_SHOWN, "true");
         if (Boolean.valueOf(bannerShown)) {
@@ -59,34 +57,33 @@ public class RedisConfigAutoConfiguration {
     @Autowired
     private PluginAdapter pluginAdapter;
 
+    @Autowired
+    @Lazy
+    private ConfigLogger configLogger;
+
     @Bean
-    public RedisMessageListenerContainer redisMessageListenerContainer(MessageListenerAdapter partialMessageListenerAdapter, MessageListenerAdapter globalMessageListenerAdapter) {
+    public RedisMessageListenerContainer configMessageListenerContainer(MessageListenerAdapter partialMessageListenerAdapter, MessageListenerAdapter globalMessageListenerAdapter) {
         String group = pluginAdapter.getGroup();
         String serviceId = pluginAdapter.getServiceId();
 
-        RedisMessageListenerContainer redisMessageListenerContainer = new RedisMessageListenerContainer();
-        redisMessageListenerContainer.setConnectionFactory(redisConnectionFactory);
-        redisMessageListenerContainer.addMessageListener(partialMessageListenerAdapter, new PatternTopic(group + "-" + serviceId));
-        redisMessageListenerContainer.addMessageListener(globalMessageListenerAdapter, new PatternTopic(group + "-" + group));
+        RedisMessageListenerContainer configMessageListenerContainer = new RedisMessageListenerContainer();
+        configMessageListenerContainer.setConnectionFactory(redisConnectionFactory);
+        configMessageListenerContainer.addMessageListener(partialMessageListenerAdapter, new PatternTopic(group + "-" + serviceId));
+        configMessageListenerContainer.addMessageListener(globalMessageListenerAdapter, new PatternTopic(group + "-" + group));
 
-        return redisMessageListenerContainer;
+        return configMessageListenerContainer;
     }
 
     @Bean
     public MessageListenerAdapter partialMessageListenerAdapter(RedisConfigAdapter configAdapter) {
-        String group = pluginAdapter.getGroup();
-        String serviceId = pluginAdapter.getServiceId();
-
-        LOG.info("Subscribe {} config from {} server, group={}, dataId={}", configAdapter.getConfigScope(false), configAdapter.getConfigType(), group, serviceId);
+        configLogger.logSubscribeStarted(false);
 
         return new MessageListenerAdapter(configAdapter, "subscribePartialConfig");
     }
 
     @Bean
     public MessageListenerAdapter globalMessageListenerAdapter(RedisConfigAdapter configAdapter) {
-        String group = pluginAdapter.getGroup();
-
-        LOG.info("Subscribe {} config from {} server, group={}, dataId={}", configAdapter.getConfigScope(true), configAdapter.getConfigType(), group, group);
+        configLogger.logSubscribeStarted(true);
 
         return new MessageListenerAdapter(configAdapter, "subscribeGlobalConfig");
     }

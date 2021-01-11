@@ -9,6 +9,10 @@ package com.nepxion.discovery.plugin.strategy.gateway.context;
  * @version 1.0
  */
 
+import java.net.URI;
+
+import org.springframework.http.HttpCookie;
+import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.web.server.ServerWebExchange;
 
 import com.nepxion.discovery.plugin.strategy.context.AbstractStrategyContextHolder;
@@ -18,8 +22,7 @@ public class GatewayStrategyContextHolder extends AbstractStrategyContextHolder 
         return GatewayStrategyContext.getCurrentContext().getExchange();
     }
 
-    @Override
-    public String getHeader(String name) {
+    public ServerHttpRequest getServerHttpRequest() {
         ServerWebExchange exchange = getExchange();
         if (exchange == null) {
             // LOG.warn("The ServerWebExchange object is lost for thread switched, or it is got before context filter probably");
@@ -27,6 +30,61 @@ public class GatewayStrategyContextHolder extends AbstractStrategyContextHolder 
             return null;
         }
 
-        return exchange.getRequest().getHeaders().getFirst(name);
+        ServerHttpRequest request = exchange.getRequest();
+        if (request == null) {
+            // LOG.warn("The ServerHttpRequest object is lost for thread switched, or it is got before context filter probably");
+
+            return null;
+        }
+
+        return request;
+    }
+
+    @Override
+    public String getHeader(String name) {
+        ServerHttpRequest request = getServerHttpRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getHeaders().getFirst(name);
+    }
+
+    @Override
+    public String getParameter(String name) {
+        ServerHttpRequest request = getServerHttpRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getQueryParams().getFirst(name);
+    }
+
+    public HttpCookie getHttpCookie(String name) {
+        ServerHttpRequest request = getServerHttpRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getCookies().getFirst(name);
+    }
+
+    @Override
+    public String getCookie(String name) {
+        HttpCookie cookie = getHttpCookie(name);
+        if (cookie != null) {
+            return cookie.getValue();
+        }
+
+        return null;
+    }
+
+    public URI getURI() {
+        ServerHttpRequest request = getServerHttpRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getURI();
     }
 }

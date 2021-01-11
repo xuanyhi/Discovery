@@ -24,6 +24,7 @@ import com.nepxion.discovery.common.util.JsonUtil;
 import com.nepxion.discovery.common.util.StringUtil;
 import com.nepxion.discovery.plugin.framework.adapter.PluginAdapter;
 import com.nepxion.discovery.plugin.framework.context.PluginContextHolder;
+import com.nepxion.discovery.plugin.strategy.constant.StrategyConstant;
 import com.nepxion.discovery.plugin.strategy.filter.StrategyVersionFilter;
 import com.nepxion.discovery.plugin.strategy.matcher.DiscoveryMatcherStrategy;
 import com.netflix.loadbalancer.Server;
@@ -35,7 +36,7 @@ public class DefaultDiscoveryEnabledAdapter implements DiscoveryEnabledAdapter {
     @Autowired
     protected DiscoveryMatcherStrategy discoveryMatcherStrategy;
 
-    @Autowired(required = false)
+    @Autowired
     protected StrategyVersionFilter strategyVersionFilter;
 
     @Autowired
@@ -47,8 +48,20 @@ public class DefaultDiscoveryEnabledAdapter implements DiscoveryEnabledAdapter {
     @Autowired
     protected DiscoveryClient discoveryClient;
 
-    @Value("${" + DiscoveryConstant.SPRING_APPLICATION_ENVIRONMENT_ROUTE + ":" + DiscoveryConstant.SPRING_APPLICATION_ENVIRONMENT_ROUTE_VALUE + "}")
+    @Value("${" + StrategyConstant.SPRING_APPLICATION_STRATEGY_ENVIRONMENT_ROUTE + ":" + StrategyConstant.SPRING_APPLICATION_STRATEGY_ENVIRONMENT_ROUTE_VALUE + "}")
     protected String environmentRoute;
+
+    @Value("${" + StrategyConstant.SPRING_APPLICATION_STRATEGY_ZONE_AFFINITY_ENABLED + ":false}")
+    protected Boolean zoneAffinityEnabled;
+
+    @Value("${" + StrategyConstant.SPRING_APPLICATION_STRATEGY_ZONE_ROUTE_ENABLED + ":true}")
+    protected Boolean zoneRouteEnabled;
+
+    @Value("${" + StrategyConstant.SPRING_APPLICATION_STRATEGY_VERSION_FAILOVER_ENABLED + ":false}")
+    protected Boolean versionFailoverEnabled;
+
+    @Value("${" + StrategyConstant.SPRING_APPLICATION_STRATEGY_VERSION_PREFER_ENABLED + ":false}")
+    protected Boolean versionPreferEnabled;
 
     @Override
     public boolean apply(Server server) {
@@ -57,12 +70,12 @@ public class DefaultDiscoveryEnabledAdapter implements DiscoveryEnabledAdapter {
             return false;
         }
 
-        enabled = applyRegion(server);
+        enabled = applyZone(server);
         if (!enabled) {
             return false;
         }
 
-        enabled = applyVersion(server);
+        enabled = applyRegion(server);
         if (!enabled) {
             return false;
         }
@@ -78,6 +91,11 @@ public class DefaultDiscoveryEnabledAdapter implements DiscoveryEnabledAdapter {
         }
 
         enabled = applyAddressBlacklist(server);
+        if (!enabled) {
+            return false;
+        }
+
+        enabled = applyVersion(server);
         if (!enabled) {
             return false;
         }
@@ -114,6 +132,44 @@ public class DefaultDiscoveryEnabledAdapter implements DiscoveryEnabledAdapter {
         }
     }
 
+    public boolean applyZone(Server server) {
+        if (!zoneAffinityEnabled) {
+            return true;
+        }
+
+        String zone = pluginAdapter.getZone();
+        // 当服务未接入本框架或者版本号未设置（表现出来的值为DiscoveryConstant.DEFAULT），则不过滤，返回
+        if (StringUtils.equals(zone, DiscoveryConstant.DEFAULT)) {
+            return true;
+        }
+
+        String serviceId = pluginAdapter.getServerServiceId(server);
+        List<ServiceInstance> instances = discoveryClient.getInstances(serviceId);
+
+        boolean matched = false;
+        for (ServiceInstance instance : instances) {
+            String instanceZone = pluginAdapter.getInstanceZone(instance);
+            if (StringUtils.equals(zone, instanceZone)) {
+                matched = true;
+
+                break;
+            }
+        }
+
+        String serverZone = pluginAdapter.getServerZone(server);
+        if (matched) {
+            // 可用区存在：执行可用区亲和性，即调用端实例和提供端实例的元数据Metadata的zone配置值相等才能调用
+            return StringUtils.equals(serverZone, zone);
+        } else {
+            // 可用区不存在：路由开关打开，可路由到其它可用区；路由开关关闭，不可路由到其它可用区或者不归属任何可用区
+            if (zoneRouteEnabled) {
+                return true;
+            } else {
+                return StringUtils.equals(serverZone, zone);
+            }
+        }
+    }
+
     public boolean applyRegion(Server server) {
         String serviceId = pluginAdapter.getServerServiceId(server);
 
@@ -125,7 +181,7 @@ public class DefaultDiscoveryEnabledAdapter implements DiscoveryEnabledAdapter {
         String region = pluginAdapter.getServerRegion(server);
 
         // 如果精确匹配不满足，尝试用通配符匹配
-        List<String> regionList = StringUtil.splitToList(regions, DiscoveryConstant.SEPARATE);
+        List<String> regionList = StringUtil.splitToList(regions);
         if (regionList.contains(region)) {
             return true;
         }
@@ -158,22 +214,121 @@ public class DefaultDiscoveryEnabledAdapter implements DiscoveryEnabledAdapter {
         return regions;
     }
 
+    public boolean applyAddress(Server server) {
+        String serviceId = pluginAdapter.getServerServiceId(server);
+
+        String addresses = getAddresses(serviceId);
+        if (StringUtils.isEmpty(addresses)) {
+            return true;
+        }
+
+        // 如果精确匹配不满足，尝试用通配符匹配
+        List<String> addressList = StringUtil.splitToList(addresses);
+        if (addressList.contains(server.getHostPort()) || addressList.contains(server.getHost()) || addressList.contains(String.valueOf(server.getPort()))) {
+            return true;
+        }
+
+        // 通配符匹配。前者是通配表达式，后者是具体值
+        for (String addressPattern : addressList) {
+            if (discoveryMatcherStrategy.match(addressPattern, server.getHostPort()) || discoveryMatcherStrategy.match(addressPattern, server.getHost()) || discoveryMatcherStrategy.match(addressPattern, String.valueOf(server.getPort()))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    public String getAddresses(String serviceId) {
+        String addressValue = pluginContextHolder.getContextRouteAddress();
+        if (StringUtils.isEmpty(addressValue)) {
+            return null;
+        }
+
+        String addresses = null;
+        try {
+            Map<String, String> addressMap = JsonUtil.fromJson(addressValue, Map.class);
+            addresses = addressMap.get(serviceId);
+        } catch (Exception e) {
+            addresses = addressValue;
+        }
+
+        return addresses;
+    }
+
+    public boolean applyIdBlacklist(Server server) {
+        String ids = pluginContextHolder.getContextRouteIdBlacklist();
+        if (StringUtils.isEmpty(ids)) {
+            return true;
+        }
+
+        String serviceUUId = pluginAdapter.getServerServiceUUId(server);
+
+        List<String> idList = StringUtil.splitToList(ids);
+        if (idList.contains(serviceUUId)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public boolean applyAddressBlacklist(Server server) {
+        String addresses = pluginContextHolder.getContextRouteAddressBlacklist();
+        if (StringUtils.isEmpty(addresses)) {
+            return true;
+        }
+
+        // 如果精确匹配不满足，尝试用通配符匹配
+        List<String> addressList = StringUtil.splitToList(addresses);
+        if (addressList.contains(server.getHostPort()) || addressList.contains(server.getHost()) || addressList.contains(String.valueOf(server.getPort()))) {
+            return false;
+        }
+
+        // 通配符匹配。前者是通配表达式，后者是具体值
+        for (String addressPattern : addressList) {
+            if (discoveryMatcherStrategy.match(addressPattern, server.getHostPort()) || discoveryMatcherStrategy.match(addressPattern, server.getHost()) || discoveryMatcherStrategy.match(addressPattern, String.valueOf(server.getPort()))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public boolean applyVersion(Server server) {
         String serviceId = pluginAdapter.getServerServiceId(server);
 
         String versions = getVersions(serviceId);
         if (StringUtils.isEmpty(versions)) {
-            if (strategyVersionFilter != null) {
+            // 版本偏好，即非蓝绿灰度发布场景下，路由到老的稳定版本的实例
+            if (versionPreferEnabled) {
                 return strategyVersionFilter.apply(server);
             } else {
                 return true;
+            }
+        } else {
+            // 版本故障转移，即无法找到相应版本的服务实例，路由到老的稳定版本的实例
+            if (versionFailoverEnabled) {
+                List<ServiceInstance> instances = discoveryClient.getInstances(serviceId);
+
+                boolean matched = false;
+                for (ServiceInstance instance : instances) {
+                    if (strategyVersionFilter.applyVersion(instance)) {
+                        matched = true;
+
+                        break;
+                    }
+                }
+
+                if (!matched) {
+                    return strategyVersionFilter.apply(server);
+                }
             }
         }
 
         String version = pluginAdapter.getServerVersion(server);
 
         // 如果精确匹配不满足，尝试用通配符匹配
-        List<String> versionList = StringUtil.splitToList(versions, DiscoveryConstant.SEPARATE);
+        List<String> versionList = StringUtil.splitToList(versions);
         if (versionList.contains(version)) {
             return true;
         }
@@ -204,81 +359,6 @@ public class DefaultDiscoveryEnabledAdapter implements DiscoveryEnabledAdapter {
         }
 
         return versions;
-    }
-
-    public boolean applyAddress(Server server) {
-        String serviceId = pluginAdapter.getServerServiceId(server);
-
-        String addresses = getAddresses(serviceId);
-        if (StringUtils.isEmpty(addresses)) {
-            return true;
-        }
-
-        // 如果精确匹配不满足，尝试用通配符匹配
-        List<String> addressList = StringUtil.splitToList(addresses, DiscoveryConstant.SEPARATE);
-        if (addressList.contains(server.getHostPort()) || addressList.contains(server.getHost()) || addressList.contains(String.valueOf(server.getPort()))) {
-            return true;
-        }
-
-        // 通配符匹配。前者是通配表达式，后者是具体值
-        for (String addressPattern : addressList) {
-            if (discoveryMatcherStrategy.match(addressPattern, server.getHostPort()) || discoveryMatcherStrategy.match(addressPattern, server.getHost()) || discoveryMatcherStrategy.match(addressPattern, String.valueOf(server.getPort()))) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    @SuppressWarnings("unchecked")
-    public String getAddresses(String serviceId) {
-        String addressValue = pluginContextHolder.getContextRouteAddress();
-        if (StringUtils.isEmpty(addressValue)) {
-            return null;
-        }
-
-        Map<String, String> addressMap = JsonUtil.fromJson(addressValue, Map.class);
-        String addresses = addressMap.get(serviceId);
-
-        return addresses;
-    }
-
-    public boolean applyIdBlacklist(Server server) {
-        String ids = pluginContextHolder.getContextRouteIdBlacklist();
-        if (StringUtils.isEmpty(ids)) {
-            return true;
-        }
-
-        String serviceUUId = pluginAdapter.getServerServiceUUId(server);
-
-        List<String> idList = StringUtil.splitToList(ids, DiscoveryConstant.SEPARATE);
-        if (idList.contains(serviceUUId)) {
-            return false;
-        }
-
-        return true;
-    }
-
-    public boolean applyAddressBlacklist(Server server) {
-        String addresses = pluginContextHolder.getContextRouteAddressBlacklist();
-        if (StringUtils.isEmpty(addresses)) {
-            return true;
-        }
-
-        // 如果精确匹配不满足，尝试用通配符匹配
-        List<String> addressList = StringUtil.splitToList(addresses, DiscoveryConstant.SEPARATE);
-        if (addressList.contains(server.getHostPort()) || addressList.contains(server.getHost()) || addressList.contains(String.valueOf(server.getPort()))) {
-            return false;
-        }
-
-        // 通配符匹配。前者是通配表达式，后者是具体值
-        for (String addressPattern : addressList) {
-            if (discoveryMatcherStrategy.match(addressPattern, server.getHostPort()) || discoveryMatcherStrategy.match(addressPattern, server.getHost()) || discoveryMatcherStrategy.match(addressPattern, String.valueOf(server.getPort()))) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     public boolean applyStrategy(Server server) {

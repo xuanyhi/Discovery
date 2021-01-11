@@ -10,7 +10,7 @@ package com.nepxion.discovery.common.constant;
  */
 
 public class DiscoveryConstant {
-    public static final String DISCOVERY_VERSION = "6.3.1";
+    public static final String DISCOVERY_VERSION = "7.0.0-SNAPSHOT";
 
     public static final String SPRING_APPLICATION_DISCOVERY_PLUGIN = "spring.application.discovery.plugin";
     public static final String SPRING_APPLICATION_DISCOVERY_VERSION = "spring.application.discovery.version";
@@ -30,10 +30,6 @@ public class DiscoveryConstant {
     public static final String SPRING_APPLICATION_NO_SERVERS_RETRY_TIMES = "spring.application.no.servers.retry.times";
     public static final String SPRING_APPLICATION_NO_SERVERS_RETRY_AWAIT_TIME = "spring.application.no.servers.retry.await.time";
     public static final String SPRING_APPLICATION_NO_SERVERS_NOTIFY_ENABLED = "spring.application.no.servers.notify.enabled";
-    public static final String SPRING_APPLICATION_ENVIRONMENT_ROUTE = "spring.application.environment.route";
-    public static final String SPRING_APPLICATION_ENVIRONMENT_ROUTE_VALUE = "common";
-    public static final String SPRING_APPLICATION_ZONE_AFFINITY_ENABLED = "spring.application.zone.affinity.enabled";
-    public static final String SPRING_APPLICATION_ZONE_ROUTE_ENABLED = "spring.application.zone.route.enabled";
     public static final String SPRING_APPLICATION_PARAMETER_EVENT_ONSTART_ENABLED = "spring.application.parameter.event.onstart.enabled";
 
     public static final String CONTEXT_PATH = "server.servlet.context-path";
@@ -71,11 +67,11 @@ public class DiscoveryConstant {
     public static final String CONSOLE = "console";
     public static final String TEST = "test";
 
-    public static final String DYNAMIC_VERSION = "dynamicVersion";
+    public static final String DYNAMIC_VERSION = "dynamic-version";
     public static final String RULE = "rule";
-    public static final String DYNAMIC_RULE = "dynamicRule";
-    public static final String DYNAMIC_GLOBAL_RULE = "dynamicGlobalRule";
-    public static final String DYNAMIC_PARTIAL_RULE = "dynamicPartialRule";
+    public static final String DYNAMIC_RULE = "dynamic-rule";
+    public static final String DYNAMIC_GLOBAL_RULE = "dynamic-global-rule";
+    public static final String DYNAMIC_PARTIAL_RULE = "dynamic-partial-rule";
     public static final String REACH_MAX_LIMITED_COUNT = "reach max limited count";
     public static final String REGISTER_ISOLATION = "register isolation";
 
@@ -112,7 +108,19 @@ public class DiscoveryConstant {
     public static final String N_D_ADDRESS_BLACKLIST = "n-d-address-blacklist";
 
     public static final String BLUE_GREEN = "blue-green";
+    public static final String BLUE_GREEN_BASIC = "blue-green-basic";
+    public static final String BLUE_BASIC = "blue-basic";
+
+    public static final String PORTAL = "portal";
+    public static final String BLUE = "blue";
+    public static final String GREEN = "green";
+    public static final String BASIC = "basic";
     public static final String GRAY = "gray";
+    public static final String STABLE = "stable";
+    public static final String UNDEFINED = "undefined";
+
+    public static final String DOMAIN_GATEWAY = "domain-gateway";
+    public static final String NON_DOMAIN_GATEWAY = "non-domain-gateway";
 
     public static final String BLACKLIST = "blacklist";
     public static final String WHITELIST = "whitelist";
@@ -129,7 +137,10 @@ public class DiscoveryConstant {
     public static final String RETURN = "return";
     public static final String PARAMETER_MAP = "parameterMap";
     public static final String EVENT = "event";
+    public static final String ERROR = "error";
     public static final String ERROR_OBJECT = "error.object";
+
+    public static final String COOKIE = "Cookie";
 
     public static final String XML_FORMAT = "xml";
     public static final String JSON_FORMAT = "json";
@@ -159,7 +170,7 @@ public class DiscoveryConstant {
     public static final String ENDPOINT_SCAN_PACKAGES = "com.nepxion.discovery.plugin.admincenter.endpoint";
     public static final String INSPECTOR_ENDPOINT_CLASS_NAME = "com.nepxion.discovery.plugin.admincenter.endpoint.InspectorEndpoint";
     public static final String INSPECTOR_ENDPOINT_METHOD_NAME = "inspect";
-    public static final String INSPECTOR_ENDPOINT_URL = "/inspector/inspect";
+    public static final String INSPECTOR_ENDPOINT_URL = "inspector/inspect";
     public static final String INSPECTOR_ENDPOINT_HEADER = "endpoint-inspector-inspect";
 
     public static final String EXPRESSION_PREFIX = "H";

@@ -12,6 +12,10 @@ package com.nepxion.discovery.plugin.strategy.service.context;
 
 import java.util.Map;
 
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletRequest;
+
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -32,8 +36,7 @@ public class ServiceStrategyContextHolder extends AbstractStrategyContextHolder 
         return RpcStrategyContext.getCurrentContext().getAttributes();
     }
 
-    @Override
-    public String getHeader(String name) {
+    public HttpServletRequest getHttpServletRequest() {
         ServletRequestAttributes attributes = getRestAttributes();
         if (attributes == null) {
             // LOG.warn("The ServletRequestAttributes object is lost for thread switched probably");
@@ -41,14 +44,83 @@ public class ServiceStrategyContextHolder extends AbstractStrategyContextHolder 
             return null;
         }
 
-        return attributes.getRequest().getHeader(name);
+        HttpServletRequest request = attributes.getRequest();
+        if (request == null) {
+            // LOG.warn("The HttpServletRequest object is lost for thread switched probably");
+
+            return null;
+        }
+
+        return request;
     }
-    
-    // 如果配置了内置条件Header，强制使用内置条件Header的模式
-    // 该模式只适用于服务层。不希望在服务层处理的这么复杂，且一般情况下，不会在服务层内置条件Header
-    // 该模式不适用于网关层。网关层需要处理条件Header外部优先，还是内部优先
+
     @Override
-    protected boolean isInnerConditionHeaderForced() {
-        return true;
+    public String getHeader(String name) {
+        HttpServletRequest request = getHttpServletRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getHeader(name);
+    }
+
+    @Override
+    public String getParameter(String name) {
+        HttpServletRequest request = getHttpServletRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getParameter(name);
+    }
+
+    public Cookie getHttpCookie(String name) {
+        HttpServletRequest request = getHttpServletRequest();
+        if (request == null) {
+            return null;
+        }
+
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+
+        for (int i = 0; i < cookies.length; i++) {
+            Cookie cookie = cookies[i];
+            String cookieName = cookie.getName();
+            if (StringUtils.equals(cookieName, name)) {
+                return cookie;
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public String getCookie(String name) {
+        Cookie cookie = getHttpCookie(name);
+        if (cookie != null) {
+            return cookie.getValue();
+        }
+
+        return null;
+    }
+
+    public String getRequestURL() {
+        HttpServletRequest request = getHttpServletRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getRequestURL().toString();
+    }
+
+    public String getRequestURI() {
+        HttpServletRequest request = getHttpServletRequest();
+        if (request == null) {
+            return null;
+        }
+
+        return request.getRequestURI();
     }
 }
